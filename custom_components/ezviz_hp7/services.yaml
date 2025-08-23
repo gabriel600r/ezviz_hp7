@@ -1,0 +1,16 @@
+unlock_gate:
+  name: Sblocca cancello
+  description: Sblocca il cancello via cloud EZVIZ.
+  fields:
+    serial:
+      required: true
+      selector:
+        text:
+unlock_door:
+  name: Sblocca porta
+  description: Sblocca la porta via cloud EZVIZ.
+  fields:
+    serial:
+      required: true
+      selector:
+        text:

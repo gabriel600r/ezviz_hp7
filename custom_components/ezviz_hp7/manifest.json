@@ -1,0 +1,13 @@
+{
+  "domain": "ezviz_hp7",
+  "name": "EZVIZ HP7",
+  "version": "0.1.0",
+  "documentation": "https://github.com/Bobsilvio/ezviz_hp7",
+  "requirements": [
+    "pyezvizapi>=1.0.1.6"
+  ],
+  "codeowners": ["@Bobsilvio"],
+  "iot_class": "cloud_push",
+  "dependencies": [],
+  "config_flow": true
+}

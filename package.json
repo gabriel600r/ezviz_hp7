@@ -1,0 +1,17 @@
+{
+  "name": "epcube",
+  "version": "1.1.5",
+  "description": "Home Assistant custom integration for EPCUBE Energy solar monitoring",
+  "keywords": [
+    "home-assistant",
+    "epcube",
+    "solar",
+    "energy",
+    "integration"
+  ],
+  "main": "sensor.py",
+  "repository": "git@github.com:bobsilvio/epcube.git",
+  "author": "Bobsilvio <@gmail.com>",
+  "license": "MIT",
+  "dependencies": {}
+}
