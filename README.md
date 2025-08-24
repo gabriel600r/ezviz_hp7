@@ -97,6 +97,6 @@ You may use it in your personal Home Assistant installation, but redistribution 
 ## ☕ Support the project
 
 If you like this integration and want to support further development:  
-[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/yourkofi)
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/silviosmart )
 
 ---
