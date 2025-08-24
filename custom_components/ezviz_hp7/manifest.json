@@ -1,13 +1,15 @@
 {
   "domain": "ezviz_hp7",
   "name": "EZVIZ HP7",
-  "version": "0.1.0",
-  "documentation": "https://github.com/Bobsilvio/ezviz_hp7",
+  "codeowners": ["@Bobsilvio"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/Bobsilvio/ezviz_hp7/",
+  "iot_class": "cloud_push",
+  "issue_tracker": "https://github.com/Bobsilvio/ezviz_hp7/issues",
+  "loggers": ["ezviz"],
   "requirements": [
     "pyezvizapi>=1.0.1.6"
   ],
-  "codeowners": ["@Bobsilvio"],
-  "iot_class": "cloud_push",
-  "dependencies": [],
-  "config_flow": true
+  "version": "0.1.0"
 }
