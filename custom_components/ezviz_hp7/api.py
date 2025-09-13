@@ -5,7 +5,7 @@ import shutil
 import subprocess
 from typing import Any, Dict, Optional
 
-from pyezvizapi.client import EzvizClient
+from .pylocalapi.client import EzvizClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -119,14 +119,14 @@ class Hp7Api:
 
     def _try_unlock(self, serial: str, lock_no: int) -> bool:
         self.ensure_client()
-        user_id = self._ensure_user_id()
         try:
-            self._client.remote_unlock(serial, user_id, lock_no)
+            self._client.remote_unlock(serial, lock_no)
             _LOGGER.info("remote_unlock OK (serial=%s, lock_no=%s)", serial, lock_no)
             return True
         except Exception as e:
             _LOGGER.warning("remote_unlock KO (serial=%s, lock_no=%s): %s", serial, lock_no, e)
             return False
+    
 
     def unlock_door(self, serial: str) -> bool:
         return self._try_unlock(serial, DEFAULT_DOOR_LOCK_NO) or \

@@ -8,8 +8,6 @@
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/Bobsilvio/ezviz_hp7/issues",
   "loggers": ["ezviz"],
-  "requirements": [
-    "pyezvizapi>=1.0.1.6"
-  ],
-  "version": "0.1.0"
+  "requirements": [],
+  "version": "0.1.1"
 }
