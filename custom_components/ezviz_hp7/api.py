@@ -127,11 +127,15 @@ class Hp7Api:
             _LOGGER.warning("remote_unlock KO (serial=%s, lock_no=%s): %s", serial, lock_no, e)
             return False
     
+    def unlock_door_cli(self, serial: str) -> bool:
+        ok, out = self._run_cli(["camera", "--serial", serial, "unlock-door"])
+        if ok:
+            _LOGGER.info("CLI unlock-door OK (serial=%s)", serial)
+        return ok
 
-    def unlock_door(self, serial: str) -> bool:
-        return self._try_unlock(serial, DEFAULT_DOOR_LOCK_NO) or \
-               self._try_unlock(serial, DEFAULT_GATE_LOCK_NO)
-
-    def unlock_gate(self, serial: str) -> bool:
-        return self._try_unlock(serial, DEFAULT_GATE_LOCK_NO) or \
-               self._try_unlock(serial, DEFAULT_DOOR_LOCK_NO)
+    def unlock_gate_cli(self, serial: str) -> bool:
+        ok, out = self._run_cli(["camera", "--serial", serial, "unlock-gate"])
+        if ok:
+            _LOGGER.info("CLI unlock-gate OK (serial=%s)", serial)
+        return ok
+    
