@@ -18,14 +18,15 @@ class Hp7Api:
         self._username = username
         self._password = password
 
-        # Permitir código de región o FQDN directo:
-        # - "sa"/"br" -> backend de Brasil observado en campo
-        # - FQDN (contiene ".") -> usar tal cual
+        # Permitir código de región o FQDN:
+        # - "sa"/"br" -> backend Brasil (forzado a https)
+        # - FQDN (contiene ".") -> usar tal cual, agregando https si falta
         reg = (region or "").strip()
         if reg.lower() in ("sa", "br"):
-            self._region_or_url = "sadevapi.ezvizlife.com"
+            host = "sadevapi.ezvizlife.com"
+            self._region_or_url = f"https://{host}"
         elif "." in reg:
-            self._region_or_url = reg
+            self._region_or_url = reg if reg.startswith(("http://", "https://")) else f"https://{reg}"
         else:
             self._region_or_url = reg
 
@@ -46,8 +47,13 @@ class Hp7Api:
             password=self._password,
             url=self._region_or_url,
         )
-        self._client.login()
-        _LOGGER.info("EZVIZ HP7: login OK su %s", self._client._token.get("api_url"))
+        try:
+            _LOGGER.debug("EZVIZ HP7: intentando login en URL/region=%s", self._region_or_url)
+            self._client.login()
+            _LOGGER.info("EZVIZ HP7: login OK su %s", self._client._token.get("api_url"))
+        except Exception as e:
+            _LOGGER.error("EZVIZ HP7: login FAILED en %s -> %s", self._region_or_url, e)
+            raise
 
     def login(self) -> bool:
         """Compat per il setup: inizializza il client SDK."""
@@ -158,5 +164,6 @@ class Hp7Api:
         if ok:
             _LOGGER.info("CLI unlock-gate OK (serial=%s)", serial)
         return ok
+
 
     
