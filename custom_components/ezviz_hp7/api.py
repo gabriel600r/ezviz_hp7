@@ -3,7 +3,7 @@ import json
 import logging
 import shutil
 import subprocess
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 
 from .pylocalapi.client import EzvizClient
 
@@ -18,17 +18,19 @@ class Hp7Api:
         self._username = username
         self._password = password
 
-        # Permitir código de región o FQDN:
-        # - "sa"/"br" -> backend Brasil (forzado a https)
-        # - FQDN (contiene ".") -> usar tal cual, agregando https si falta
-        reg = (region or "").strip()
-        if reg.lower() in ("sa", "br"):
-            host = "sadevapi.ezvizlife.com"
-            self._region_or_url = f"https://{host}"
-        elif "." in reg:
-            self._region_or_url = reg if reg.startswith(("http://", "https://")) else f"https://{reg}"
-        else:
-            self._region_or_url = reg
+        # Región o host. Para SA/BR probamos hosts de Brasil (sin esquema).
+        reg = (region or "").strip().lower()
+        self._region_or_url = reg  # valor por defecto (eu/us/cn/as)
+        self._sa_hosts: List[str] = []
+
+        if reg in ("sa", "br"):
+            # Orden de prueba observado en campo (Brasil).
+            self._sa_hosts = ["sadevapi.ezvizlife.com", "litedev.ezvizlife.com"]
+            # Usar el primero por defecto; si falla, ensure_client() probará el siguiente.
+            self._region_or_url = self._sa_hosts[0]
+        elif "." in (region or ""):
+            # Permitimos FQDN: pasar host "tal cual" (sin https:// para el SDK)
+            self._region_or_url = region
 
         self._client: Optional[EzvizClient] = None
         self._user_id: Optional[str] = None
@@ -39,21 +41,35 @@ class Hp7Api:
 
     # -------------------- Sessione SDK (solo per unlock) --------------------
 
+    def _sdk_login(self, url_or_region: str) -> EzvizClient:
+        """Intento de login SDK con un url/region; propaga excepción si falla."""
+        _LOGGER.debug("EZVIZ HP7: intentando login SDK con '%s'", url_or_region)
+        client = EzvizClient(
+            account=self._username,
+            password=self._password,
+            url=url_or_region,
+        )
+        client.login()
+        _LOGGER.info("EZVIZ HP7: login OK en '%s'", client._token.get("api_url", url_or_region))
+        return client
+
     def ensure_client(self) -> None:
         if self._client is not None:
             return
-        self._client = EzvizClient(
-            account=self._username,
-            password=self._password,
-            url=self._region_or_url,
-        )
-        try:
-            _LOGGER.debug("EZVIZ HP7: intentando login en URL/region=%s", self._region_or_url)
-            self._client.login()
-            _LOGGER.info("EZVIZ HP7: login OK su %s", self._client._token.get("api_url"))
-        except Exception as e:
-            _LOGGER.error("EZVIZ HP7: login FAILED en %s -> %s", self._region_or_url, e)
-            raise
+        # Si hay hosts SA, probamos en orden; si no, un único intento con self._region_or_url.
+        candidates = self._sa_hosts or [self._region_or_url]
+        last_err: Optional[Exception] = None
+        for cand in candidates:
+            try:
+                self._client = self._sdk_login(cand)
+                # Fijamos el host efectivo para que la CLI use el mismo backend.
+                self._region_or_url = cand
+                return
+            except Exception as e:
+                _LOGGER.warning("EZVIZ HP7: login FAILED en '%s' -> %s", cand, e)
+                last_err = e
+        # Si llegamos acá es que fallaron todos los candidatos.
+        raise last_err if last_err else RuntimeError("EZVIZ HP7: login desconocido")
 
     def login(self) -> bool:
         """Compat per il setup: inizializza il client SDK."""
@@ -93,6 +109,7 @@ class Hp7Api:
         if not self._cli:
             _LOGGER.error("CLI 'pyezvizapi' non trovata nel PATH del container.")
             return False, ""
+        # Pasamos exactamente lo mismo que usa el SDK (host o region corta).
         cmd = [self._cli, "-u", self._username, "-p", self._password, "-r", self._region_or_url] + args
         try:
             out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=30)
@@ -164,6 +181,7 @@ class Hp7Api:
         if ok:
             _LOGGER.info("CLI unlock-gate OK (serial=%s)", serial)
         return ok
+
 
 
     
