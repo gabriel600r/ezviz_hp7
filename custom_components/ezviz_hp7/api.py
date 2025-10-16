@@ -14,12 +14,21 @@ DEFAULT_GATE_LOCK_NO = 1   # CANCELLO=1
 
 
 class Hp7Api:
-
-
     def __init__(self, username: str, password: str, region: str):
         self._username = username
         self._password = password
-        self._region_or_url = region
+
+        # Permitir código de región o FQDN directo:
+        # - "sa"/"br" -> backend de Brasil observado en campo
+        # - FQDN (contiene ".") -> usar tal cual
+        reg = (region or "").strip()
+        if reg.lower() in ("sa", "br"):
+            self._region_or_url = "sadevapi.ezvizlife.com"
+        elif "." in reg:
+            self._region_or_url = reg
+        else:
+            self._region_or_url = reg
+
         self._client: Optional[EzvizClient] = None
         self._user_id: Optional[str] = None
         self._cli = shutil.which("pyezvizapi")
@@ -80,11 +89,14 @@ class Hp7Api:
             return False, ""
         cmd = [self._cli, "-u", self._username, "-p", self._password, "-r", self._region_or_url] + args
         try:
-            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=25)
-            return True, out.decode("utf-8", "ignore")
+            out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=30)
+            text = out.decode("utf-8", "ignore")
+            return True, text
         except subprocess.CalledProcessError as e:
-            _LOGGER.error("CLI error (%s): %s", e.returncode, (e.output or b"").decode("utf-8", "ignore"))
-            return False, ""
+            text = (e.output or b"").decode("utf-8", "ignore")
+            _LOGGER.error("CLI error (%s). Output: %.300s", e.returncode, text)
+            # Devolver stdout para diagnóstico aunque haya RC != 0
+            return False, text
         except Exception as e:
             _LOGGER.error("CLI exception: %s", e)
             return False, ""
@@ -106,13 +118,21 @@ class Hp7Api:
 
     def get_status(self, serial: str) -> Dict[str, Any]:
         ok, out = self._run_cli(["camera", "--serial", serial, "status"])
-        if not ok:
+        if not ok and not out:
             return {}
         try:
-            data = json.loads(out)
+            # Endurecer parseo: quitar BOM/espacios; arrancar desde el primer "{"
+            raw = (out or "").lstrip("\ufeff").strip()
+            if not raw:
+                raise ValueError("empty response")
+            start = raw.find("{")
+            if start > 0:
+                raw = raw[start:]
+            data = json.loads(raw)
             return data if isinstance(data, dict) else {}
         except Exception as e:
-            _LOGGER.error("Parse JSON status fallito: %s", e)
+            preview = (out or "").replace("\n", " ")[:300]
+            _LOGGER.error("Parse JSON status fallito: %s. Preview=%.300s", e, preview)
             return {}
 
     # -------------------- Sblocco --------------------
@@ -126,7 +146,7 @@ class Hp7Api:
         except Exception as e:
             _LOGGER.warning("remote_unlock KO (serial=%s, lock_no=%s): %s", serial, lock_no, e)
             return False
-    
+
     def unlock_door_cli(self, serial: str) -> bool:
         ok, out = self._run_cli(["camera", "--serial", serial, "unlock-door"])
         if ok:
@@ -138,4 +158,5 @@ class Hp7Api:
         if ok:
             _LOGGER.info("CLI unlock-gate OK (serial=%s)", serial)
         return ok
+
     
