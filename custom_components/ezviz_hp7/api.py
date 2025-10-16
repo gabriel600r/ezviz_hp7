@@ -18,19 +18,28 @@ class Hp7Api:
         self._username = username
         self._password = password
 
-        # Región o host. Para SA/BR probamos hosts de Brasil (sin esquema).
-        reg = (region or "").strip().lower()
-        self._region_or_url = reg  # valor por defecto (eu/us/cn/as)
-        self._sa_hosts: List[str] = []
+        reg_in = (region or "").strip()
+        reg = reg_in.lower()
+
+        # Guardamos lo que pasaremos al SDK/CLI
+        self._region_or_url = reg_in
+        self._sa_candidates: List[str] = []
 
         if reg in ("sa", "br"):
-            # Orden de prueba observado en campo (Brasil).
-            self._sa_hosts = ["sadevapi.ezvizlife.com", "litedev.ezvizlife.com"]
-            # Usar el primero por defecto; si falla, ensure_client() probará el siguiente.
-            self._region_or_url = self._sa_hosts[0]
-        elif "." in (region or ""):
-            # Permitimos FQDN: pasar host "tal cual" (sin https:// para el SDK)
-            self._region_or_url = region
+            # Orden de hosts/region que vemos en Sudamérica:
+            # 1) 'sa' por si el SDK ya lo soporta y resuelve apiisa
+            # 2) apiisa (prod), 3) mdev.sa (mobile/dev), 4) sadevapi, 5) litedev
+            self._sa_candidates = [
+                "sa",
+                "apiisa.ezvizlife.com",
+                "mdev.sa.ezvizlife.com",
+                "sadevapi.ezvizlife.com",
+                "litedev.ezvizlife.com",
+            ]
+            self._region_or_url = self._sa_candidates[0]  # inicial
+        elif "." in reg_in:
+            # Si el usuario puso un FQDN en config (custom), respetarlo tal cual (sin esquema para el SDK).
+            self._region_or_url = reg_in
 
         self._client: Optional[EzvizClient] = None
         self._user_id: Optional[str] = None
@@ -56,19 +65,17 @@ class Hp7Api:
     def ensure_client(self) -> None:
         if self._client is not None:
             return
-        # Si hay hosts SA, probamos en orden; si no, un único intento con self._region_or_url.
-        candidates = self._sa_hosts or [self._region_or_url]
+        candidates = self._sa_candidates or [self._region_or_url]
         last_err: Optional[Exception] = None
         for cand in candidates:
             try:
                 self._client = self._sdk_login(cand)
-                # Fijamos el host efectivo para que la CLI use el mismo backend.
+                # Fijamos el host/region efectiva para que la CLI use lo mismo
                 self._region_or_url = cand
                 return
             except Exception as e:
                 _LOGGER.warning("EZVIZ HP7: login FAILED en '%s' -> %s", cand, e)
                 last_err = e
-        # Si llegamos acá es que fallaron todos los candidatos.
         raise last_err if last_err else RuntimeError("EZVIZ HP7: login desconocido")
 
     def login(self) -> bool:
@@ -109,7 +116,7 @@ class Hp7Api:
         if not self._cli:
             _LOGGER.error("CLI 'pyezvizapi' non trovata nel PATH del container.")
             return False, ""
-        # Pasamos exactamente lo mismo que usa el SDK (host o region corta).
+        # Pasamos exactamente lo que quedó efectivo en el SDK (region o host).
         cmd = [self._cli, "-u", self._username, "-p", self._password, "-r", self._region_or_url] + args
         try:
             out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=30)
@@ -118,7 +125,6 @@ class Hp7Api:
         except subprocess.CalledProcessError as e:
             text = (e.output or b"").decode("utf-8", "ignore")
             _LOGGER.error("CLI error (%s). Output: %.300s", e.returncode, text)
-            # Devolver stdout para diagnóstico aunque haya RC != 0
             return False, text
         except Exception as e:
             _LOGGER.error("CLI exception: %s", e)
@@ -144,7 +150,6 @@ class Hp7Api:
         if not ok and not out:
             return {}
         try:
-            # Endurecer parseo: quitar BOM/espacios; arrancar desde el primer "{"
             raw = (out or "").lstrip("\ufeff").strip()
             if not raw:
                 raise ValueError("empty response")
@@ -181,7 +186,3 @@ class Hp7Api:
         if ok:
             _LOGGER.info("CLI unlock-gate OK (serial=%s)", serial)
         return ok
-
-
-
-    
