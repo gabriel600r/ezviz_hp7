@@ -3,11 +3,14 @@ import json
 import logging
 import shutil
 import subprocess
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, Optional
 
 from .pylocalapi.client import EzvizClient
 
 _LOGGER = logging.getLogger(__name__)
+
+# Elegí UNO solo. Si no funciona apiisa, cambiá por litedev y probá de nuevo.
+SA_BACKEND = "apiisa.ezvizlife.com"  # alternativas: "litedev.ezvizlife.com"
 
 DEFAULT_DOOR_LOCK_NO = 2   # PORTA=2
 DEFAULT_GATE_LOCK_NO = 1   # CANCELLO=1
@@ -21,24 +24,15 @@ class Hp7Api:
         reg_in = (region or "").strip()
         reg = reg_in.lower()
 
-        # Guardamos lo que pasaremos al SDK/CLI
-        self._region_or_url = reg_in
-        self._sa_candidates: List[str] = []
-
+        # Valor que pasaremos al SDK y a la CLI (-r)
         if reg in ("sa", "br"):
-            # Orden de hosts/region que vemos en Sudamérica:
-            # 1) 'sa' por si el SDK ya lo soporta y resuelve apiisa
-            # 2) apiisa (prod), 3) mdev.sa (mobile/dev), 4) sadevapi, 5) litedev
-            self._sa_candidates = [
-                "sa",
-                "apiisa.ezvizlife.com",
-                "mdev.sa.ezvizlife.com",
-                "sadevapi.ezvizlife.com",
-                "litedev.ezvizlife.com",
-            ]
-            self._region_or_url = self._sa_candidates[0]  # inicial
+            # Fuerza SIEMPRE el backend elegido arriba.
+            self._region_or_url = SA_BACKEND
         elif "." in reg_in:
-            # Si el usuario puso un FQDN en config (custom), respetarlo tal cual (sin esquema para el SDK).
+            # Si el usuario ingresó un FQDN, respetarlo tal cual (sin esquema).
+            self._region_or_url = reg_in
+        else:
+            # eu/us/cn/as (lo maneja internamente el SDK)
             self._region_or_url = reg_in
 
         self._client: Optional[EzvizClient] = None
@@ -50,33 +44,21 @@ class Hp7Api:
 
     # -------------------- Sessione SDK (solo per unlock) --------------------
 
-    def _sdk_login(self, url_or_region: str) -> EzvizClient:
-        """Intento de login SDK con un url/region; propaga excepción si falla."""
-        _LOGGER.debug("EZVIZ HP7: intentando login SDK con '%s'", url_or_region)
-        client = EzvizClient(
-            account=self._username,
-            password=self._password,
-            url=url_or_region,
-        )
-        client.login()
-        _LOGGER.info("EZVIZ HP7: login OK en '%s'", client._token.get("api_url", url_or_region))
-        return client
-
     def ensure_client(self) -> None:
         if self._client is not None:
             return
-        candidates = self._sa_candidates or [self._region_or_url]
-        last_err: Optional[Exception] = None
-        for cand in candidates:
-            try:
-                self._client = self._sdk_login(cand)
-                # Fijamos el host/region efectiva para que la CLI use lo mismo
-                self._region_or_url = cand
-                return
-            except Exception as e:
-                _LOGGER.warning("EZVIZ HP7: login FAILED en '%s' -> %s", cand, e)
-                last_err = e
-        raise last_err if last_err else RuntimeError("EZVIZ HP7: login desconocido")
+        _LOGGER.debug("EZVIZ HP7: intentando login SDK con '%s'", self._region_or_url)
+        self._client = EzvizClient(
+            account=self._username,
+            password=self._password,
+            url=self._region_or_url,
+        )
+        try:
+            self._client.login()
+            _LOGGER.info("EZVIZ HP7: login OK en '%s'", self._client._token.get("api_url", self._region_or_url))
+        except Exception as e:
+            _LOGGER.error("EZVIZ HP7: login FAILED en '%s' -> %s", self._region_or_url, e)
+            raise
 
     def login(self) -> bool:
         """Compat per il setup: inizializza il client SDK."""
@@ -116,8 +98,8 @@ class Hp7Api:
         if not self._cli:
             _LOGGER.error("CLI 'pyezvizapi' non trovata nel PATH del container.")
             return False, ""
-        # Pasamos exactamente lo que quedó efectivo en el SDK (region o host).
         cmd = [self._cli, "-u", self._username, "-p", self._password, "-r", self._region_or_url] + args
+        _LOGGER.debug("EZVIZ HP7: ejecutando CLI con -r '%s' args=%s", self._region_or_url, args)
         try:
             out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=30)
             text = out.decode("utf-8", "ignore")
