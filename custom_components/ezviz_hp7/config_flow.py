@@ -7,7 +7,7 @@ from .api import Hp7Api
 DATA_SCHEMA = vol.Schema({
     vol.Required("username"): str,
     vol.Required("password"): str,
-    vol.Required(CONF_REGION, default="eu"): vol.In(["eu", "us", "cn", "as"]),
+    vol.Required(CONF_REGION, default="eu"): vol.In(["eu", "us", "cn", "as", "sa"]),
 })
 
 SERIAL_SCHEMA = vol.Schema({
