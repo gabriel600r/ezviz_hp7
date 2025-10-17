@@ -168,3 +168,35 @@ class Hp7Api:
         if ok:
             _LOGGER.info("CLI unlock-gate OK (serial=%s)", serial)
         return ok
+
+    # ---- Desbloqueo inteligente: primero SDK, luego CLI como fallback ----
+    def unlock_door(self, serial: str) -> bool:
+        """Intenta abrir la PUERTA: primero SDK (lock 2, luego 1), después CLI."""
+        self.ensure_client()
+        # SDK primero
+        if self._try_unlock(serial, DEFAULT_DOOR_LOCK_NO):  # 2
+            _LOGGER.info("unlock_door SDK OK (serial=%s, lock_no=%s)", serial, DEFAULT_DOOR_LOCK_NO)
+            return True
+        if self._try_unlock(serial, DEFAULT_GATE_LOCK_NO):  # 1 (fallback)
+            _LOGGER.info("unlock_door SDK OK (serial=%s, lock_no=%s)", serial, DEFAULT_GATE_LOCK_NO)
+            return True
+        # Fallback CLI
+        ok, _ = self._run_cli(["camera", "--serial", serial, "unlock-door"])
+        _LOGGER.log(logging.INFO if ok else logging.ERROR, "unlock_door CLI %s (serial=%s)", "OK" if ok else "FALLITO", serial)
+        return ok
+
+    def unlock_gate(self, serial: str) -> bool:
+        """Intenta abrir el PORTÓN: primero SDK (lock 1, luego 2), después CLI."""
+        self.ensure_client()
+        # SDK primero
+        if self._try_unlock(serial, DEFAULT_GATE_LOCK_NO):  # 1
+            _LOGGER.info("unlock_gate SDK OK (serial=%s, lock_no=%s)", serial, DEFAULT_GATE_LOCK_NO)
+            return True
+        if self._try_unlock(serial, DEFAULT_DOOR_LOCK_NO):  # 2 (fallback)
+            _LOGGER.info("unlock_gate SDK OK (serial=%s, lock_no=%s)", serial, DEFAULT_DOOR_LOCK_NO)
+            return True
+        # Fallback CLI
+        ok, _ = self._run_cli(["camera", "--serial", serial, "unlock-gate"])
+        _LOGGER.log(logging.INFO if ok else logging.ERROR, "unlock_gate CLI %s (serial=%s)", "OK" if ok else "FALLITO", serial)
+        return ok
+
