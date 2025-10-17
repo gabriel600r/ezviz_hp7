@@ -44,3 +44,4 @@ class EzvizHp7Button(ButtonEntity):
             ok = await self.hass.async_add_executor_job(self._api.unlock_door, self._serial)
             _LOGGER.log(logging.INFO if ok else logging.ERROR, "EZVIZ HP7: 'Sblocca Porta' %s.", "OK" if ok else "FALLITO")
 
+
