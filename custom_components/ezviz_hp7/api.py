@@ -145,15 +145,15 @@ class Hp7Api:
             _LOGGER.error("Parse JSON status fallito: %s. Preview=%.300s", e, preview)
             return {}
 
-       # -------------------- Sblocco (solo SDK) --------------------
+    # -------------------- Sblocco (solo SDK, sin CLI) --------------------
 
     def _try_unlock(self, serial: str, lock_no: int) -> bool:
-        """Intenta desbloquear vía SDK pasando también user_id (requerido por el cliente)."""
+        """Desbloquea vía SDK pasando user_id y lock_no con keywords."""
         self.ensure_client()
         try:
             uid = self._ensure_user_id()
-            # La firma correcta del SDK requiere user_id además del serial y lock_no.
-            self._client.remote_unlock(serial, uid, lock_no)
+            # Usar keywords evita problemas con el orden de argumentos del SDK
+            self._client.remote_unlock(serial=serial, user_id=uid, lock_no=lock_no)
             _LOGGER.info("remote_unlock SDK OK (serial=%s, user_id=%s, lock_no=%s)", serial, uid, lock_no)
             return True
         except Exception as e:
@@ -161,10 +161,9 @@ class Hp7Api:
             return False
 
     def unlock_door(self, serial: str) -> bool:
-        """Abrir PUERTA: prueba lock 2 y luego 1."""
-        # Primero el lock de puerta (2); si no, intenta con 1.
+        """PUERTA: prueba lock 2 y luego 1."""
         if self._try_unlock(serial, 2):
-            _LOGGER.info("unlock_door SDK OK con lock_no=2 (PUERTA)")
+            _LOGGER.info("unlock_door SDK OK con lock_no=2")
             return True
         if self._try_unlock(serial, 1):
             _LOGGER.info("unlock_door SDK OK con lock_no=1 (fallback)")
@@ -173,9 +172,9 @@ class Hp7Api:
         return False
 
     def unlock_gate(self, serial: str) -> bool:
-        """Abrir PORTÓN: prueba lock 1 y luego 2."""
+        """PORTÓN: prueba lock 1 y luego 2."""
         if self._try_unlock(serial, 1):
-            _LOGGER.info("unlock_gate SDK OK con lock_no=1 (PORTÓN)")
+            _LOGGER.info("unlock_gate SDK OK con lock_no=1")
             return True
         if self._try_unlock(serial, 2):
             _LOGGER.info("unlock_gate SDK OK con lock_no=2 (fallback)")
