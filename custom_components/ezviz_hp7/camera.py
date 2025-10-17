@@ -38,6 +38,8 @@ class Hp7LastSnapshotCamera(Camera, CoordinatorEntity):
             model=model,
         )
 
+    # ---------------- helpers ----------------
+
     def _normalize_url(self, url: str | None) -> str | None:
         if not url:
             return None
@@ -46,7 +48,7 @@ class Hp7LastSnapshotCamera(Camera, CoordinatorEntity):
             url = f"https:{url}"
         try:
             parsed = urlparse(url)
-            _LOGGER.debug("HP7 snapshot host=%s path=%s", parsed.netloc, parsed.path)
+            _LOGGER.debug("HP7 snapshot: host=%s path=%s", parsed.netloc, parsed.path)
         except Exception:
             pass
         return url
@@ -54,30 +56,45 @@ class Hp7LastSnapshotCamera(Camera, CoordinatorEntity):
     async def _fetch_image(self, url: str | None):
         url = self._normalize_url(url)
         if not url:
+            _LOGGER.debug("HP7 snapshot: sin URL para descargar")
             return None
 
         session = async_get_clientsession(self.hass)
         headers = {
             "User-Agent": "okhttp/4.9",
-            "Accept": "image/*",
+            "Accept": "*/*",
             "Referer": "https://ezvizlife.com/",
         }
         try:
-            async with session.get(url, timeout=15, allow_redirects=True, headers=headers) as resp:
-                if resp.status == 200:
-                    return await resp.read()
-                _LOGGER.debug("HP7 snapshot HTTP %s para %s", resp.status, url)
+            async with session.get(url, timeout=20, allow_redirects=True, headers=headers) as resp:
+                ctype = resp.headers.get("Content-Type", "")
+                data = await resp.read()
+                if ctype.startswith("image/"):
+                    _LOGGER.debug("HP7 snapshot: HTTP %s, Content-Type=%s, bytes=%d",
+                                  resp.status, ctype, len(data))
+                    return data
+                # No es imagen: log detallado (preview texto/hex)
+                preview = data[:120]
+                try:
+                    ptxt = preview.decode("utf-8", "ignore").replace("\n", " ")[:120]
+                    _LOGGER.debug("HP7 snapshot: NO-IMAGE HTTP %s, CT=%s, bytes=%d, preview='%s'",
+                                  resp.status, ctype, len(data), ptxt)
+                except Exception:
+                    _LOGGER.debug("HP7 snapshot: NO-IMAGE HTTP %s, CT=%s, bytes=%d (binario)",
+                                  resp.status, ctype, len(data))
+                return None
         except Exception as e:
             _LOGGER.debug("HP7 snapshot fetch error: %s", e)
-        return None
+            return None
 
     def _extract_url_from(self, data: dict | None) -> str | None:
         if not data:
             return None
-        # probamos varias claves posibles
+        # Claves posibles según variantes de backend
         candidates = [
             "last_alarm_pic", "lastAlarmPic",
-            "picUrl", "picURL", "cover", "deviceCover", "last_cover",
+            "picUrl", "picURL", "cover", "deviceCover",
+            "last_cover", "lastCover", "thumbnail", "thumbUrl",
         ]
         for k in candidates:
             v = data.get(k)
@@ -87,8 +104,10 @@ class Hp7LastSnapshotCamera(Camera, CoordinatorEntity):
         _LOGGER.debug("HP7 snapshot: sin URL en keys=%s", list(data.keys()))
         return None
 
+    # ---------------- Camera API ----------------
+
     async def async_camera_image(self, width: int | None = None, height: int | None = None):
-        # 1) Intento con lo que tiene el coordinator
+        # 1) Intento con el estado del coordinator
         url = self._extract_url_from(self.coordinator.data)
         img = await self._fetch_image(url)
         if img:
