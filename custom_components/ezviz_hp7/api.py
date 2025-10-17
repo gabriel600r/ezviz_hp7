@@ -145,58 +145,41 @@ class Hp7Api:
             _LOGGER.error("Parse JSON status fallito: %s. Preview=%.300s", e, preview)
             return {}
 
-    # -------------------- Sblocco --------------------
+       # -------------------- Sblocco (solo SDK) --------------------
 
     def _try_unlock(self, serial: str, lock_no: int) -> bool:
+        """Intenta desbloquear vía SDK pasando también user_id (requerido por el cliente)."""
         self.ensure_client()
         try:
-            self._client.remote_unlock(serial, lock_no)
-            _LOGGER.info("remote_unlock OK (serial=%s, lock_no=%s)", serial, lock_no)
+            uid = self._ensure_user_id()
+            # La firma correcta del SDK requiere user_id además del serial y lock_no.
+            self._client.remote_unlock(serial, uid, lock_no)
+            _LOGGER.info("remote_unlock SDK OK (serial=%s, user_id=%s, lock_no=%s)", serial, uid, lock_no)
             return True
         except Exception as e:
-            _LOGGER.warning("remote_unlock KO (serial=%s, lock_no=%s): %s", serial, lock_no, e)
+            _LOGGER.warning("remote_unlock SDK KO (serial=%s, lock_no=%s): %s", serial, lock_no, e)
             return False
 
-    def unlock_door_cli(self, serial: str) -> bool:
-        ok, out = self._run_cli(["camera", "--serial", serial, "unlock-door"])
-        if ok:
-            _LOGGER.info("CLI unlock-door OK (serial=%s)", serial)
-        return ok
-
-    def unlock_gate_cli(self, serial: str) -> bool:
-        ok, out = self._run_cli(["camera", "--serial", serial, "unlock-gate"])
-        if ok:
-            _LOGGER.info("CLI unlock-gate OK (serial=%s)", serial)
-        return ok
-
-    # ---- Desbloqueo inteligente: primero SDK, luego CLI como fallback ----
     def unlock_door(self, serial: str) -> bool:
-        """Intenta abrir la PUERTA: primero SDK (lock 2, luego 1), después CLI."""
-        self.ensure_client()
-        # SDK primero
-        if self._try_unlock(serial, DEFAULT_DOOR_LOCK_NO):  # 2
-            _LOGGER.info("unlock_door SDK OK (serial=%s, lock_no=%s)", serial, DEFAULT_DOOR_LOCK_NO)
+        """Abrir PUERTA: prueba lock 2 y luego 1."""
+        # Primero el lock de puerta (2); si no, intenta con 1.
+        if self._try_unlock(serial, 2):
+            _LOGGER.info("unlock_door SDK OK con lock_no=2 (PUERTA)")
             return True
-        if self._try_unlock(serial, DEFAULT_GATE_LOCK_NO):  # 1 (fallback)
-            _LOGGER.info("unlock_door SDK OK (serial=%s, lock_no=%s)", serial, DEFAULT_GATE_LOCK_NO)
+        if self._try_unlock(serial, 1):
+            _LOGGER.info("unlock_door SDK OK con lock_no=1 (fallback)")
             return True
-        # Fallback CLI
-        ok, _ = self._run_cli(["camera", "--serial", serial, "unlock-door"])
-        _LOGGER.log(logging.INFO if ok else logging.ERROR, "unlock_door CLI %s (serial=%s)", "OK" if ok else "FALLITO", serial)
-        return ok
+        _LOGGER.error("unlock_door SDK FALLITO (serial=%s)", serial)
+        return False
 
     def unlock_gate(self, serial: str) -> bool:
-        """Intenta abrir el PORTÓN: primero SDK (lock 1, luego 2), después CLI."""
-        self.ensure_client()
-        # SDK primero
-        if self._try_unlock(serial, DEFAULT_GATE_LOCK_NO):  # 1
-            _LOGGER.info("unlock_gate SDK OK (serial=%s, lock_no=%s)", serial, DEFAULT_GATE_LOCK_NO)
+        """Abrir PORTÓN: prueba lock 1 y luego 2."""
+        if self._try_unlock(serial, 1):
+            _LOGGER.info("unlock_gate SDK OK con lock_no=1 (PORTÓN)")
             return True
-        if self._try_unlock(serial, DEFAULT_DOOR_LOCK_NO):  # 2 (fallback)
-            _LOGGER.info("unlock_gate SDK OK (serial=%s, lock_no=%s)", serial, DEFAULT_DOOR_LOCK_NO)
+        if self._try_unlock(serial, 2):
+            _LOGGER.info("unlock_gate SDK OK con lock_no=2 (fallback)")
             return True
-        # Fallback CLI
-        ok, _ = self._run_cli(["camera", "--serial", serial, "unlock-gate"])
-        _LOGGER.log(logging.INFO if ok else logging.ERROR, "unlock_gate CLI %s (serial=%s)", "OK" if ok else "FALLITO", serial)
-        return ok
+        _LOGGER.error("unlock_gate SDK FALLITO (serial=%s)", serial)
+        return False
 
