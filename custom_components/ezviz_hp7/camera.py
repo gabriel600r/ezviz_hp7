@@ -42,10 +42,8 @@ class Hp7LastSnapshotCamera(Camera, CoordinatorEntity):
         if not url:
             return None
         url = url.strip()
-        # A veces el backend devuelve //host/path
         if url.startswith("//"):
             url = f"https:{url}"
-        # Log mínimo sin query string por seguridad
         try:
             parsed = urlparse(url)
             _LOGGER.debug("HP7 snapshot host=%s path=%s", parsed.netloc, parsed.path)
@@ -60,7 +58,6 @@ class Hp7LastSnapshotCamera(Camera, CoordinatorEntity):
 
         session = async_get_clientsession(self.hass)
         headers = {
-            # headers típicos de la app móvil
             "User-Agent": "okhttp/4.9",
             "Accept": "image/*",
             "Referer": "https://ezvizlife.com/",
@@ -74,17 +71,33 @@ class Hp7LastSnapshotCamera(Camera, CoordinatorEntity):
             _LOGGER.debug("HP7 snapshot fetch error: %s", e)
         return None
 
+    def _extract_url_from(self, data: dict | None) -> str | None:
+        if not data:
+            return None
+        # probamos varias claves posibles
+        candidates = [
+            "last_alarm_pic", "lastAlarmPic",
+            "picUrl", "picURL", "cover", "deviceCover", "last_cover",
+        ]
+        for k in candidates:
+            v = data.get(k)
+            if v:
+                _LOGGER.debug("HP7 snapshot: usando clave %s", k)
+                return v
+        _LOGGER.debug("HP7 snapshot: sin URL en keys=%s", list(data.keys()))
+        return None
+
     async def async_camera_image(self, width: int | None = None, height: int | None = None):
-        # 1) Primero intentamos con lo que tenga el coordinator
-        url = (self.coordinator.data or {}).get("last_alarm_pic")
+        # 1) Intento con lo que tiene el coordinator
+        url = self._extract_url_from(self.coordinator.data)
         img = await self._fetch_image(url)
         if img:
             return img
 
-        # 2) Si falló o estaba vacío, refrescamos status desde la API
+        # 2) Si falló, pedimos status fresco a la API
         try:
-            data = await self.hass.async_add_executor_job(self.coordinator.api.get_status, self._serial)
-            url2 = (data or {}).get("last_alarm_pic") or (data or {}).get("lastAlarmPic")
+            status = await self.hass.async_add_executor_job(self.coordinator.api.get_status, self._serial)
+            url2 = self._extract_url_from(status)
             img = await self._fetch_image(url2)
             if img:
                 return img
